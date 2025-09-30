@@ -1,0 +1,209 @@
+# =============================================================================
+# MOA (Mixture-of-Agents) Aggregator Configuration
+# =============================================================================
+# Copy this file to moa_config.yaml and customize for your deployment
+# This service combines responses from multiple LLM providers for better quality
+
+
+# =============================================================================
+# DOWNSTREAM API CONFIGURATIONS
+# =============================================================================
+# Configure which LLM APIs to use as candidate generators
+# Each entry sends the same prompt and generates candidate responses
+downstream_apis:
+
+  # --- GEMINI CANDIDATES ---
+  gemini_candidate_1:
+    base_url: "http://gemini:8004/v1"           # Internal Docker network URL
+    api_key: "your-secret-api-key-here"         # Same as main config api_key
+    model: "gemini-2.5-pro"                     # High quality, slower
+    stream: false                                # Streaming not supported in MOA
+
+  gemini_candidate_2:
+    base_url: "http://gemini:8004/v1"
+    api_key: "your-secret-api-key-here"
+    model: "gemini-2.5-flash"                   # Faster alternative
+    stream: false
+
+  # --- QWEN CANDIDATES ---
+  qwen_candidate_1:
+    base_url: "http://qwen:8005/v1"
+    api_key: "your-secret-api-key-here"
+    model: "qwen3-coder-plus"                   # Best for coding tasks
+    stream: false
+
+  qwen_candidate_2:
+    base_url: "http://qwen:8005/v1"
+    api_key: "your-secret-api-key-here"
+    model: "qwen3-coder-plus"                   # Duplicate for racing
+    stream: false
+
+  qwen_candidate_3:
+    base_url: "http://qwen:8005/v1"
+    api_key: "your-secret-api-key-here"
+    model: "qwen3-coder-plus"                   # More candidates = better quality
+    stream: false
+
+  qwen_candidate_4:
+    base_url: "http://qwen:8005/v1"
+    api_key: "your-secret-api-key-here"
+    model: "qwen3-coder-plus"
+    stream: false
+
+  # --- OPENROUTER / GROK CANDIDATES ---
+  grok_candidate_1:
+    base_url: "http://openrouter:8006/api/v1"
+    api_key: "your-local-access-key-here"       # OpenRouter proxy key
+    model: "x-ai/grok-4-fast:free"              # Free Grok model
+    stream: false
+
+  grok_candidate_2:
+    base_url: "http://openrouter:8006/api/v1"
+    api_key: "your-local-access-key-here"
+    model: "x-ai/grok-4-fast:free"
+    stream: false
+
+  # --- ADD MORE CANDIDATES ---
+  # claude_candidate_1:
+  #   base_url: "http://openrouter:8006/api/v1"
+  #   api_key: "your-local-access-key-here"
+  #   model: "anthropic/claude-3.5-sonnet:free"
+  #   stream: false
+
+# =============================================================================
+# MOA (MIXTURE-OF-AGENTS) CONFIGURATION
+# =============================================================================
+moa:
+  # --- SINGLE MASTER MODE (backward compatibility) ---
+  # Which downstream API to use as the master synthesizer
+  master_agent_key: "qwen_candidate_1"
+
+  # --- MULTI-MASTER RACING MODE (NEW) ---
+  # Enable racing between multiple master agents for best synthesis
+  racing_enabled: true                          # false = use single master only
+  racing_runs: 2                                # How many times to run each master
+
+  # List of master agents to race (only used if racing_enabled: true)
+  master_agent_keys:
+    - "qwen_candidate_1"                        # Fast and good quality
+    - "grok_candidate_1"                        # Alternative perspective
+    # - "gemini_candidate_1"                    # Add more for comparison
+
+  # --- CANDIDATE GENERATION SETTINGS ---
+  num_candidates: 4                             # Total candidates to generate (4-7 recommended)
+
+  # Faster-plus-one mode: request extra candidates, use best N
+  faster_plus_one: true                         # Enable reliability boost
+  faster_plus_num: 3                            # Request N+3 extra, pick best N
+
+  # Quality control
+  minimum_candidates: 3                         # Minimum successful responses before synthesis
+
+  # Logging
+  enable_detailed_logging: false                # true = verbose logs (for debugging)
+
+  # Response truncation
+  max_candidate_length: 8000                    # Max characters per candidate (prevents token overflow)
+
+# =============================================================================
+# TIMEOUT CONFIGURATION
+# =============================================================================
+timeouts:
+  # Soft timeout: proceed with synthesis if minimum_candidates met
+  soft_timeout_seconds: 30.0                    # Wait this long for candidates
+
+  # Hard timeout: force stop regardless of candidate count
+  hard_timeout_seconds: 120.0                   # Maximum total wait time
+
+  # HTTP client timeout for downstream requests
+  http_client_timeout: 180.0                    # Per-request timeout
+
+# =============================================================================
+# RETRY CONFIGURATION
+# =============================================================================
+retry:
+  # Retry settings for failed downstream requests
+  max_retries: 3                                # How many times to retry
+  base_delay: 1.0                               # Initial delay (seconds)
+  max_delay: 30.0                               # Maximum delay (seconds)
+  jitter_range: 0.2                             # Randomization (0.0-1.0)
+
+
+
+# =============================================================================
+# SERVER CONFIGURATION
+# =============================================================================
+server:
+  host: "0.0.0.0"       # Bind to all interfaces (use "127.0.0.1" for local only)
+  port: 8007            # Port for MOA aggregator service
+
+
+# =============================================================================
+# PROMPTS FOR SYNTHESIS (ADVANCED)
+# =============================================================================
+# Prompts Configuration
+prompts:
+  moa_system_prompt: |
+    You are a world-class AI synthesizer. Your role is to analyze multiple, potentially conflicting AI-generated responses and produce a single, superior, and comprehensive final answer. You must reason through the inputs and then provide a clean, well-structured response.
+
+  moa_unified_synthesis_prompt: |
+    <task>SYNTHESIS</task>
+    <query>{initial_query}</query>
+    
+    You are a Master Synthesizer. Analyze the candidate responses below and produce one superior final answer.
+    
+    CRITICAL: For code/file changes, ALWAYS use tools to apply them. Never output raw unapplied code.
+    
+    ## Step 1: Quick Candidate Review
+    For each candidate, note:
+    - Score: X/10
+    - Best parts: [what's good]
+    - Problems: [what's missing or wrong]
+    
+    ## Step 2: Synthesis Plan
+    
+    <plan>
+      <conflicts>
+        [List any contradictions between candidates and how you'll resolve them]
+        Rule: Use majority view; mention alternatives if valuable
+      </conflicts>
+      
+      <structure>
+        [How you'll organize the final answer: intro → main points → conclusion]
+      </structure>
+      
+      <actions>
+        1. [What you'll merge from candidates]
+        2. [What you'll improve or add]
+        3. [What you'll fix or remove]
+      </actions>
+    </plan>
+    
+    ## Step 3: Final Answer
+    
+    <final_answer>
+    [Write your complete, synthesized response here]
+    [Must be better than any single candidate]
+    [For code: applied via tools, not raw text]
+    </final_answer>
+    
+    Quality checklist:
+    ✓ Answers the complete original query
+    ✓ More accurate than individual candidates  
+    ✓ Clear and well-organized
+    ✓ Code/files applied with tools (not text)
+    
+    # ALERT: The final answer MUST be enclosed within <final_answer>...</final_answer> tags for extraction.
+    # HARD RULE: Always use tools to edit files and apply code; never provide raw, unapplied code in the answer.
+    
+    ANSWER WITH ONLY THE XML STRUCTURE ABOVE.
+    
+    # Candidates to consider (in no particular order):
+    <candidates>{candidates_section}</candidates>
+
+  candidate_format_template: |
+    **Candidate {index}:**
+    {content}
+
+    ---
+

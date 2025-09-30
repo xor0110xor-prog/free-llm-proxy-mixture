@@ -1,0 +1,8 @@
+requests
+google-auth
+httpx
+aiofiles
+fastapi
+loguru
+uvicorn
+PyYAML

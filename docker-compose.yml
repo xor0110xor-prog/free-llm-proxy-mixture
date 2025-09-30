@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  gemini:
+    build: ./gemini
+    ports:
+      - "8004:8004"
+    volumes:
+      - ./gemini/config.yaml:/app/config.yaml:ro
+      - ./gemini/gemini_oauth_creds_files:/app/gemini_oauth_creds_files
+    environment:
+      - PYTHONUNBUFFERED=1
+    stdin_open: true
+    tty: true
+
+  qwen:
+    build: ./qwen
+    ports:
+      - "8005:8005"
+    volumes:
+      - ./qwen/config.yaml:/app/config.yaml:ro
+      - ./qwen/qwen_oauth_creds_files:/app/qwen_oauth_creds_files
+    environment:
+      - PYTHONUNBUFFERED=1
+    stdin_open: true
+    tty: true
+
+  openrouter:
+    build: ./openrouter
+    ports:
+      - "8006:8006"
+    volumes:
+      - ./openrouter/config.yaml:/app/config.yaml:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+    stdin_open: true
+    tty: true
+
+  mixture_of_llm:
+    build: ./mixture_of_llm
+    ports:
+      - "8007:8007"
+    environment:
+      - PYTHONUNBUFFERED=1
+    stdin_open: true
+    tty: true

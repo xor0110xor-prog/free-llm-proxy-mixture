@@ -1,0 +1,64 @@
+# =============================================================================
+# OpenRouter Proxy Configuration
+# =============================================================================
+# Copy this file to openrouter_config.yaml and add your API keys
+# This proxy manages multiple OpenRouter keys with intelligent rotation
+
+# =============================================================================
+# OPENROUTER API KEYS
+# =============================================================================
+openrouter:
+  # Multiple API keys for rotation and failover
+  # Get free keys from: https://openrouter.ai/keys
+  # Each key has its own rate limits - more keys = higher throughput
+  keys:
+    - "sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    - "sk-or-v1-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+    - "sk-or-v1-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+    # Add 10-20 keys for best performance
+    # - "sk-or-v1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    # - "sk-or-v1-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    # - "sk-or-v1-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    # - "sk-or-v1-dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    # - "sk-or-v1-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    # - "sk-or-v1-ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    # - "sk-or-v1-gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg"
+    # - "sk-or-v1-hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh"
+    # - "sk-or-v1-iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii"
+    # - "sk-or-v1-jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj"
+    # - "sk-or-v1-kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"
+    # - "sk-or-v1-llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll"
+    # - "sk-or-v1-mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm"
+  
+
+  # do not change
+  key_selection_strategy: "round-robin"
+  key_selection_opts: []
+  base_url: "https://openrouter.ai/api/v1"
+  public_endpoints:
+    - "/api/v1/models"
+
+  # =============================================================================
+  # RATE LIMIT MANAGEMENT
+  # =============================================================================
+  # How long to disable a key after hitting rate limit (seconds)
+  rate_limit_cooldown: 14400                      # 4 hours (OpenRouter default)
+  
+  # Only show/use free models (hides paid models from listings)
+  free_only: true                                 # true = free models only, false = all models
+  
+  # Global delay between all requests (seconds)
+  # Useful for preventing 429 errors from overloaded models
+  # Set to 0 for maximum speed (default)
+  global_rate_delay: 0                            # 0 = no delay, 10 = 10 second delay
+
+
+# =============================================================================
+# SERVER SETTINGS
+# =============================================================================
+server:
+  host: "0.0.0.0"                                 # Bind to all interfaces (use "127.0.0.1" for local only)
+  port: 8006                                      # Port for OpenRouter proxy service
+  access_key: "your-secret-access-key-here"       # Bearer token for authenticating to this proxy
+  log_level: "INFO"                               # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  http_log_level: "INFO"                          # HTTP access logs verbosity

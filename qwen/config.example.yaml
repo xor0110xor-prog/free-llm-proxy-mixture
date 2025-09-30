@@ -1,0 +1,43 @@
+# Copy this file to config.yaml (unified config with Gemini)
+# or qwen_config.yaml for standalone deployment
+
+# =============================================================================
+# AUTHENTICATION
+# =============================================================================
+# Optional Bearer token for authenticating requests to this proxy
+# If set, clients must include: Authorization: Bearer <api_key>
+api_key: "your-secret-api-key-here"             # Example: sk-qwen-abc123xyz789
+
+# =============================================================================
+# QWEN CONFIGURATION
+# =============================================================================
+qwen:
+  # Multi-account OAuth credentials for unlimited requests
+  # Each account has its own rate limit (typically 2000 RPD free tier)
+  # More accounts = higher total throughput
+  accounts:
+    - "qwen_oauth_creds_files/oauth_creds_account1.json"
+    - "qwen_oauth_creds_files/oauth_creds_account2.json"
+    - "qwen_oauth_creds_files/oauth_creds_account3.json"
+    - "qwen_oauth_creds_files/oauth_creds_account4.json"
+    - "qwen_oauth_creds_files/oauth_creds_account5.json"
+    # Add more accounts below for higher rate limits
+    # - "qwen_oauth_creds_files/oauth_creds_account6.json"
+    # - "qwen_oauth_creds_files/oauth_creds_account7.json"
+    # - "qwen_oauth_creds_files/oauth_creds_account8.json"
+    # - "qwen_oauth_creds_files/oauth_creds_account9.json"
+    # - "qwen_oauth_creds_files/oauth_creds_account10.json"
+
+  # Default model when client doesn't specify
+  default_model: "qwen3-coder-plus"
+
+  # List of available Qwen models
+  available_models:
+    - "qwen3-coder-plus"       # Best for coding tasks, slower but higher quality
+    - "qwen3-coder-flash"      # Faster, lightweight for simple tasks
+    # - "qwen3-plus"           # General purpose (uncomment if using)
+    # - "qwen3-flash"          # Fast general purpose (uncomment if using)
+
+  # Initial backoff time (seconds) when rate limit is hit
+  # Doubles on each subsequent failure (exponential backoff)
+  initial_backoff_seconds: 60

@@ -1,0 +1,45 @@
+# Copy this file to config.yaml and fill in your actual credentials
+# DO NOT commit config.yaml to git (it's in .gitignore)
+
+# Optional: Bearer token for authenticating requests to the proxy
+# If set, clients must include: Authorization: Bearer <api_key>
+api_key: "your-secret-api-key-here"
+
+# =============================================================================
+# GEMINI CONFIGURATION
+# =============================================================================
+gemini:
+  # OAuth credentials for Google Gemini API
+  # These are the public client credentials from Google AI Studio
+  oauth:
+    client_id: "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com"
+    client_secret: "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"
+  
+  # Multi-account configuration for unlimited requests
+  # Format: "path/to/oauth_creds_file.json": "gen-lang-client-PROJECT_ID"
+  # 
+  # How to get these:
+  # 1. Install gemini CLI: pip install google-generativeai
+  # 2. Run: gemini login
+  # 3. Find oauth_creds.json in ~/.gemini/ (Linux/Mac) or %USERPROFILE%\.gemini\ (Windows)
+  # 4. Copy to gemini_oauth_creds_files/ directory
+  # 5. Get project ID from https://aistudio.google.com/ → Create project → Copy ID
+  accounts:
+    "gemini_oauth_creds_files/oauth_creds_account1.json": "gen-lang-client-0123456789"
+    "gemini_oauth_creds_files/oauth_creds_account2.json": "gen-lang-client-0987654321"
+    "gemini_oauth_creds_files/oauth_creds_account3.json": "gen-lang-client-0555555555"
+    # Add more accounts for higher rate limits (50 RPD per account)
+    # "gemini_oauth_creds_files/oauth_creds_account4.json": "gen-lang-client-0444444444"
+    # "gemini_oauth_creds_files/oauth_creds_account5.json": "gen-lang-client-0333333333"
+
+  # Default model to use when client doesn't specify
+  default_model: "gemini-2.5-pro"
+  
+  # List of available Gemini models
+  available_models:
+    - "gemini-2.5-pro"      # Best quality
+    - "gemini-2.5-flash"    # Faster responses
+
+  # Initial backoff time (seconds) when rate limit is hit
+  # Doubles on each subsequent failure
+  initial_backoff_seconds: 30
