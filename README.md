@@ -137,10 +137,10 @@ curl http://localhost:8007/v1/chat/completions \
 │     Combines responses from all sources     │
 └──────────┬──────────┬──────────┬────────────┘
            │          │          │
-    ┌──────▼─────┐ ┌─▼──────┐ ┌─▼─────────┐
+    ┌──────▼─────┐ ┌──▼─────┐ ┌──▼────────┐
     │   Gemini   │ │  Qwen  │ │ OpenRouter│
     │  (8004)    │ │ (8005) │ │  (8006)   │
-    │ 3 accts   │ │ 5 accts│ │  5 keys   │
+    │ 3 accts    │ │ 5 accts│ │  5 keys   │
     └────────────┘ └────────┘ └───────────┘
 ```
 
