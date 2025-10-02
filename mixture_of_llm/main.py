@@ -484,6 +484,13 @@ async def process_moa_request(request: Request, num_candidates: int) -> JSONResp
 async def moa_n3(request: Request) -> JSONResponse:
     return await process_moa_request(request, num_candidates=NUM_CANDIDATES)
 
+@app.get("/v1/models")
+async def list_models() -> JSONResponse:
+    """Lists available models (downstream APIs)."""
+    models = [{"api_id": api_id, "model": config["model"], "base_url": config["base_url"]} for api_id, config in TARGET_APIS.items()]
+    return JSONResponse(content={"object": "list", "data": models})
+
+
 @app.get("/health")
 async def health_check():
     """Provides a health check and system configuration overview."""
