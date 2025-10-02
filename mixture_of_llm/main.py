@@ -446,7 +446,7 @@ async def process_moa_request(request: Request, num_candidates: int) -> JSONResp
         # Extract initial query
         data = await request.json()
         messages = data.get("messages", [])
-        initial_query = next((m['content'] for m in reversed(messages) if m['role'] == 'user'), "No query found.")
+        initial_query = str(messages)
 
         client: httpx.AsyncClient = request.app.state.http_client
 
@@ -459,7 +459,13 @@ async def process_moa_request(request: Request, num_candidates: int) -> JSONResp
             final_moa_result = await async_unified_moa(initial_query=initial_query, candidates=valid_candidates, client=client, master_api_config=master_api_config)
             model_name = f"moa-unified-synthesis-{master_api_config['model']}"
 
-        # Update response metadata
+        master_usage = final_moa_result.get("usage", {})
+
+        logger.info(
+            f"[{request_id}] MOA COMPLETE. Master agent tokens: "
+            f"total={master_usage.get('total_tokens', 0)}"
+        )
+
         final_moa_result["id"] = request_id
         final_moa_result["model"] = model_name
 
