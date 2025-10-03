@@ -48,3 +48,4 @@ Thumbs.db
 repomix.config.json
 auto_context.sh
 all_files_as_txt_read_only.txt
+.aider*

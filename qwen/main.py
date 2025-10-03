@@ -630,7 +630,8 @@ class QwenApiClient:
 
                 response.raise_for_status()
                 response_data = response.json()
-                logger.info(f"[{request_id}] Successfully received Qwen response")
+                # response_data['model'] = openai_request_body.get('model')
+                # logger.info(f"[{request_id}] Successfully received Qwen response: {response_data}")
                 return response_data
 
             except httpx.HTTPStatusError as e:
@@ -640,7 +641,7 @@ class QwenApiClient:
                     continue
                 else:
                     error_text = await self._read_error_response(e.response)
-                    logger.error(f"[{request_id}] HTTP error: {e.response.status_code} - {error_text}")
+                    logger.exception(f"[{request_id}] HTTP error: {e.response.status_code} - {error_text}")
                     raise HTTPException(
                         status_code=e.response.status_code,
                         detail=f"Upstream HTTP error: {e.response.status_code}"
@@ -665,7 +666,7 @@ class QwenApiClient:
             'Authorization': f'Bearer {credentials.access_token}',
             'Content-Type': 'application/json'
         }
-        
+        # request_body["model"] =  "qwen3-coder-plus"
         response = await http_client.post(
             url, 
             headers=headers, 
@@ -804,7 +805,9 @@ async def create_qwen_chat_completion(request: Request):
         client: QwenApiClient = request.app.state.qwen_client
         response_data = await client.chat_completion(request, openai_request_body, request_id)
 
-        logger.info(f"[{request_id}] Qwen request completed successfully.")
+        # logger.info(f"[{request_id}] Qwen request completed successfully.")
+        # log response_data
+        # logger.debug(f"[{request_id}] Qwen response data: {response_data}")
         return JSONResponse(content=response_data)
 
     except HTTPException:
