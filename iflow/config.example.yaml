@@ -1,0 +1,19 @@
+
+api_key: "your-secret-api-key-here"
+
+
+iflow:
+  accounts:
+    - "iflow_oauth_creds_files/oauth_creds.json"
+
+  default_model: "glm-4.6"
+  available_models:
+    - "glm-4.6"
+    - "qwen3-coder-480b-a35b"
+    - "deepseek-v3.1-terminus"
+    - "deepseek-v3.2"
+    - "qwen3-max"
+    - "kimi-k2-0905"
+    - "qwen3-vl-plus"
+
+  initial_backoff_seconds: 60

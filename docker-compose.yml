@@ -36,6 +36,17 @@ services:
     stdin_open: true
     tty: true
 
+  iflow:
+    build: ./iflow
+    ports:
+      - "8008:8008"
+    volumes:
+      - ./iflow/config.yaml:/app/config.yaml:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+    stdin_open: true
+    tty: true
+
   mixture_of_llm:
     build: ./mixture_of_llm
     ports:
