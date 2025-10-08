@@ -26,7 +26,7 @@ from loguru import logger
 
 class Constants:
     TOKEN_BUFFER_MS = 60 * 1000
-    MAX_RETRIES = 3
+    MAX_RETRIES = 6
     BASE_RETRY_DELAY = 1.0
     REQUEST_TIMEOUT = 300.0
     DEFAULT_TIMEOUT = 30.0
@@ -167,17 +167,19 @@ class IFlowTokenRefresher:
 
     @staticmethod
     def _build_refresh_request(refresh_token: str) -> Dict[str, str]:
-        return {"grant_type": "refresh_token", "refresh_token": refresh_token}
+        return {
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id": Constants.IFLOW_CLIENT_ID,
+            "client_secret": Constants.IFLOW_CLIENT_SECRET
+        }
 
     @staticmethod
     def _build_request_headers() -> Dict[str, str]:
-        auth_string = f"{Constants.IFLOW_CLIENT_ID}:{Constants.IFLOW_CLIENT_SECRET}"
-        auth_b64 = base64.b64encode(auth_string.encode('utf-8')).decode('utf-8')
         return {
             'Content-Type': 'application/x-www-form-urlencoded',
-            'Authorization': f'Basic {auth_b64}',
             'Accept': 'application/json',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'User-Agent': 'google-auth-library-nodejs/9.15.1',
             'Accept-Language': 'en-US,en;q=0.9',
             'Accept-Encoding': 'gzip, deflate, br',
             'Connection': 'keep-alive',
@@ -436,8 +438,36 @@ class RequestBuilder:
     def build_request(openai_body: Dict[str, Any]) -> Dict[str, Any]:
         request_body = openai_body.copy()
         request_body["stream"] = False
-        request_body["max_tokens"] = Constants.IFLOW_MAX_TOKENS
+        # request_body["max_tokens"] = 128000
         request_body["temperature"] = Constants.IFLOW_TEMPERATURE
+        # "reasoning": {
+        #         "effort": "high"  # or "medium", "low"
+        #     }
+        # # Anthropic style - token-based
+        # payload = {
+        #     "model": "anthropic/claude-3.7-sonnet",
+        #     "messages": [{"role": "user", "content": "Your question"}],
+        #     "reasoning": {
+        #         "max_tokens": 2000  # Specific token allocation
+        #     }
+        # }
+        # request_body['reasoning'] = {
+        #     "effort": "high"
+        # }
+        # request_body['reasoning'] = {
+        #     "max_tokens": "128000",
+        #     'enabled' : True,
+        #     'effort': 'high',
+        # }
+        # request_body['thinking'] ={
+        #     'type': 'enabled',
+        # }
+
+        request_body_to_print = request_body.copy()
+        if 'messages' in request_body_to_print:
+            del request_body_to_print['messages']
+
+        logger.warning(f"Transformed request body: {request_body_to_print=}")
         return request_body
 
 
@@ -463,7 +493,12 @@ class ApiClient:
                 if response.status_code == 401:
                     response = await self._retry_with_refresh(http_client, credentials, account.creds_path, request_body, request_id)
                 response.raise_for_status()
-                return response.json()
+                try:
+                    return response.json()
+                except json.JSONDecodeError:
+                    error_text = (await response.aread())
+                    logger.error(f"[{request_id}] Invalid JSON response: {error_text}")
+                    raise HTTPException(status_code=500, detail="Invalid JSON response from upstream API")
             except httpx.HTTPStatusError as e:
                 if is_rate_limit_error(e.response.status_code):
                     await self.account_manager.report_failure(account.creds_path)

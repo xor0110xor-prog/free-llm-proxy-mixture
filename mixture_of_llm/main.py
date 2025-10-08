@@ -388,7 +388,10 @@ async def async_unified_moa(
     # Otherwise, process for a final text answer.
     full_llm_output = message.get("content", "")
     if not full_llm_output:
-        raise HTTPException(status_code=502, detail="MOA master agent returned empty content and no tool_calls.")
+        logger.error(f"Master agent returned empty content: {llm_response_json}")
+        # await asyncio.sleep(30)  # let others continue first
+        return 'error'
+        # raise HTTPException(status_code=502, detail="MOA master agent returned empty content and no tool_calls.")
 
     match = re.search(r"<final_answer>(.*?)</final_answer>", full_llm_output, re.DOTALL)
     if match:
@@ -445,15 +448,26 @@ async def race_master_agents(
         for completed_task in done:
             try:
                 result = await completed_task
+
+                # Check if result has error
+                if "error" in result:
+                    logger.info(f"[{race_id}] Continuing to wait for other tasks...")
+                    continue  # Skip this result and wait for next
+
+                # Found valid winner
                 for meta in task_metadata:
                     if meta["task"] == completed_task:
                         winner_metadata = meta
+                        logger.info(f"[{race_id}] Found winner: {meta['master_key']} (run {meta['run_index']}) {winner_metadata=}")
                         break
                 winner_result = result
+                logger.info(f"[{race_id}] Winner result obtained:{winner_result=}")
                 break
+
             except Exception as e:
-                logger.warning(f"[{race_id}] Racing task failed: {e}")
+                logger.exception(f"[{race_id}] Racing task failed: {e}")
                 continue
+
         if pending:
             logger.info(f"[{race_id}] Cancelling {len(pending)} remaining racing tasks")
             for task in pending:
@@ -518,6 +532,210 @@ async def process_moa_request(request: Request, num_candidates: int) -> JSONResp
         if isinstance(e, HTTPException): raise
         logger.error(f"[{request_id}] Error in unified MOA process: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Unified MOA processing error: {e}")
+
+
+# --- Random API Selection Logic ---
+async def call_random_api(
+        request: Request,
+        num_apis: int = 1,
+        race_mode: bool = False
+) -> JSONResponse:
+    """
+    Calls random downstream API(s) and optionally races them for fastest response.
+
+    Args:
+        request: FastAPI request object
+        num_apis: Number of random APIs to call (default 1)
+        race_mode: If True, races multiple APIs and returns fastest result
+    """
+    request_id = f"random-{uuid.uuid4()}"
+    start_time = time.time()
+
+    try:
+        data = await request.json()
+        messages = data.get("messages", [])
+        if not messages:
+            raise HTTPException(status_code=400, detail="Parameter 'messages' is required.")
+
+        # Extract tool-calling parameters
+        tools = data.get("tools")
+        tool_choice = data.get("tool_choice")
+        parallel_tool_calls = data.get("parallel_tool_calls")
+
+        client: httpx.AsyncClient = request.app.state.http_client
+
+        # Select random APIs
+        available_apis = list(TARGET_APIS.items())
+        if num_apis > len(available_apis):
+            num_apis = len(available_apis)
+            logger.warning(f"[{request_id}] Requested {num_apis} APIs, but only {len(available_apis)} available")
+
+        selected_apis = random.sample(available_apis, num_apis)
+        logger.info(f"[{request_id}] Selected random APIs: {[api_id for api_id, _ in selected_apis]}")
+
+        if not race_mode or num_apis == 1:
+            # Single API call mode
+            api_id, api_config = selected_apis[0]
+            logger.info(f"[{request_id}] Calling single random API: {api_id}")
+
+            result = await call_downstream_api_with_retry(
+                client, api_config, messages,
+                tools=tools,
+                tool_choice=tool_choice,
+                parallel_tool_calls=parallel_tool_calls
+            )
+
+            if "error" in result:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"API {api_id} failed: {result.get('details', result['error'])}"
+                )
+
+            elapsed_time = time.time() - start_time
+            result["id"] = request_id
+            result["model"] = f"random-{api_id}"
+            if "metadata" not in result:
+                result["metadata"] = {}
+            result["metadata"]["selected_api"] = api_id
+            result["metadata"]["elapsed_seconds"] = round(elapsed_time, 2)
+            result["metadata"]["mode"] = "single"
+
+            logger.info(f"[{request_id}] Single API call completed in {elapsed_time:.2f}s")
+            return JSONResponse(content=result)
+
+        else:
+            # Racing mode - call all selected APIs and return fastest
+            logger.info(f"[{request_id}] Racing {num_apis} random APIs")
+
+            tasks = []
+            task_metadata = []
+
+            for api_id, api_config in selected_apis:
+                task = asyncio.create_task(
+                    call_downstream_api_with_retry(
+                        client, api_config, messages,
+                        tools=tools,
+                        tool_choice=tool_choice,
+                        parallel_tool_calls=parallel_tool_calls
+                    )
+                )
+                tasks.append(task)
+                task_metadata.append({
+                    "api_id": api_id,
+                    "model": api_config.get("model", "unknown"),
+                    "task": task
+                })
+
+            winner_result = None
+            winner_metadata = None
+
+            # Wait for first successful completion
+            pending_tasks = set(tasks)
+            while pending_tasks and winner_result is None:
+                done, pending_tasks = await asyncio.wait(
+                    pending_tasks,
+                    return_when=asyncio.FIRST_COMPLETED
+                )
+
+                for completed_task in done:
+                    try:
+                        result = await completed_task
+
+                        # Skip if error
+                        if "error" in result:
+                            for meta in task_metadata:
+                                if meta["task"] == completed_task:
+                                    logger.warning(
+                                        f"[{request_id}] API {meta['api_id']} failed: {result.get('details', result['error'])}"
+                                    )
+                            continue
+
+                        # Found winner!
+                        for meta in task_metadata:
+                            if meta["task"] == completed_task:
+                                winner_metadata = meta
+                                break
+                        winner_result = result
+                        break
+
+                    except Exception as e:
+                        logger.warning(f"[{request_id}] Racing task failed with exception: {e}")
+                        continue
+
+            # Cancel remaining tasks
+            if pending_tasks:
+                logger.info(f"[{request_id}] Cancelling {len(pending_tasks)} remaining racing tasks")
+                for task in pending_tasks:
+                    task.cancel()
+                await asyncio.gather(*pending_tasks, return_exceptions=True)
+
+            if winner_result is None:
+                raise HTTPException(
+                    status_code=502,
+                    detail="All random APIs failed in racing mode"
+                )
+
+            elapsed_time = time.time() - start_time
+            winner_result["id"] = request_id
+            winner_result["model"] = f"fastest-{winner_metadata['api_id']}"
+
+            if "metadata" not in winner_result:
+                winner_result["metadata"] = {}
+
+            winner_result["metadata"]["winner_api"] = winner_metadata["api_id"]
+            winner_result["metadata"]["winner_model"] = winner_metadata["model"]
+            winner_result["metadata"]["elapsed_seconds"] = round(elapsed_time, 2)
+            winner_result["metadata"]["mode"] = "racing"
+            winner_result["metadata"]["num_racers"] = num_apis
+            winner_result["metadata"]["tested_apis"] = [meta["api_id"] for meta in task_metadata]
+
+            logger.info(
+                f"[{request_id}] Racing winner: {winner_metadata['api_id']} "
+                f"({winner_metadata['model']}) in {elapsed_time:.2f}s"
+            )
+
+            return JSONResponse(content=winner_result)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[{request_id}] Error in random API call: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Random API call error: {e}")
+
+
+# --- Random API Endpoints ---
+@app.post("/random_v1/chat/completions")
+async def random_single_api(request: Request) -> JSONResponse:
+    """
+    Selects and calls a single random downstream API.
+    Useful for load distribution and testing different models.
+    """
+    return await call_random_api(request, num_apis=1, race_mode=False)
+
+
+@app.post("/fastest_v1/chat/completions")
+async def fastest_api_racing(request: Request) -> JSONResponse:
+    """
+    Races multiple random downstream APIs and returns the fastest response.
+    Number of APIs to race can be controlled via query parameter 'n' (default: 3).
+
+    Example: POST /v1/fastest?n=5
+    """
+    num_racers = 5
+
+    # Validate num_racers
+    if num_racers < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="Parameter 'n' must be at least 2 for racing mode"
+        )
+
+    max_racers = len(TARGET_APIS)
+    if num_racers > max_racers:
+        logger.warning(f"Requested {num_racers} racers, limiting to {max_racers} (all available APIs)")
+        num_racers = max_racers
+
+    return await call_random_api(request, num_apis=num_racers, race_mode=True)
 
 
 @app.post("/v1/chat/completions")
