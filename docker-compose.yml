@@ -47,6 +47,50 @@ services:
     stdin_open: true
     tty: true
 
+  cerebras:
+    build: ./cerebras
+    ports:
+      - "8009:8009"
+    volumes:
+      - ./cerebras/config.yaml:/app/config.yaml:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+    stdin_open: true
+    tty: true
+
+  groq:
+    build: ./groq
+    ports:
+      - "8010:8010"
+    volumes:
+      - ./groq/config.yaml:/app/config.yaml:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+    stdin_open: true
+    tty: true
+
+  fastest_from_all_clever:
+    build: ./fastest_from_all_clever
+    ports:
+      - "8011:8011"
+    volumes:
+      - ./fastest_from_all_clever/config.yaml:/app/config.yaml:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+    stdin_open: true
+    tty: true
+
+  fastest_from_all_fast:
+    build: ./fastest_from_all_fast
+    ports:
+      - "8012:8012"
+    volumes:
+      - ./fastest_from_all_fast/config.yaml:/app/config.yaml:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+    stdin_open: true
+    tty: true
+
   mixture_of_llm:
     build: ./mixture_of_llm
     ports:

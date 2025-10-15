@@ -1,0 +1,40 @@
+# Configuration for Cerebras API Key Rotator
+# All system settings are managed here for easy deployment and customization
+
+api_key: "123"  # Optional: Bearer token authentication for local proxy
+
+# Cerebras Configuration
+cerebras:
+  # API Keys - Add multiple keys with prefix CEREBRA_API_KEY
+  keys:
+    - "your_api_key_1"
+    - "your_api_key_2"
+    - "your_api_key_3"
+
+  # Rate limit cooldown in seconds
+  rate_limit_cooldown: 120
+
+  # Model Pools
+  all_models:
+    - "qwen-3-235b-a22b-thinking-2507"
+    - "gpt-oss-120b"
+    - "qwen-3-coder-480b"
+    - "qwen-3-235b-a22b-instruct-2507"
+
+  clever_models:
+    - "qwen-3-235b-a22b-thinking-2507"
+    - "gpt-oss-120b"
+    - "qwen-3-coder-480b"
+    - "qwen-3-235b-a22b-instruct-2507"
+
+  merging_models:
+    - "qwen-3-235b-a22b-thinking-2507"
+    - "gpt-oss-120b"
+    - "qwen-3-coder-480b"
+    - "qwen-3-235b-a22b-instruct-2507"
+
+  # Multi-pass mode settings
+  clever_pass_count: 3
+
+  # State file for API key tracking
+  state_file: "api_key_state.json"

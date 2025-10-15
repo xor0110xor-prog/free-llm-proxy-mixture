@@ -1,0 +1,28 @@
+# Configuration for Groq API Key Rotator
+# All system settings are managed here for easy deployment and customization
+
+api_key: "123"  # Optional: Bearer token authentication for local proxy
+
+# Groq Configuration
+groq:
+  # API Keys - Add your Groq API keys here
+  keys:
+    - "your_groq_api_key_1"
+    - "your_groq_api_key_2"
+    - "your_groq_api_key_3"
+
+  # Rate limit cooldown in seconds (base value for first hit)
+  rate_limit_cooldown: 120
+
+  # API URL (usually no need to change)
+  api_url: "https://api.groq.com/openai/v1/chat/completions"
+
+  # Available models
+  available_models:
+    - "compound-beta"
+
+  # Default model to use if not specified in request
+  default_model: "compound-beta"
+
+  # State file for API key tracking
+  state_file: "groq_api_key_state.json"

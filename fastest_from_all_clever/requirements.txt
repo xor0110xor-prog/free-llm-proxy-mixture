@@ -1,0 +1,5 @@
+httpx
+fastapi
+loguru
+uvicorn
+PyYAML

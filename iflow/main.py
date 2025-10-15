@@ -146,6 +146,7 @@ class IFlowTokenRefresher:
                     self._log_http_error(response)
                     continue
                 token_data = self._parse_token_response(response, attempt)
+                # logger.debug(f"Token response data: {token_data}")
                 if token_data is None:
                     continue
                 if self._has_oauth_error(token_data, attempt):

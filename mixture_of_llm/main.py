@@ -17,7 +17,7 @@ from typing import Dict, Any, AsyncGenerator, List, Set, Optional
 from pathlib import Path
 import httpx
 import yaml
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Header, Depends
 from fastapi.responses import JSONResponse
 from loguru import logger
 
@@ -34,6 +34,29 @@ def load_config(config_path: str = "config.yaml") -> Dict[str, Any]:
 
     logger.info(f"Configuration loaded from {config_path}")
     return config
+
+
+# Settings class to load API key from config
+class Settings:
+    """Application settings loaded from config.yaml."""
+
+    @staticmethod
+    def load_config() -> Dict[str, Any]:
+        """Load configuration from config.yaml file."""
+        try:
+            with open("config.yaml", "r") as f:
+                return yaml.safe_load(f) or {}
+        except FileNotFoundError:
+            logger.error("config.yaml not found!")
+            return {}
+        except Exception as e:
+            logger.error(f"Error loading config.yaml: {e}")
+            return {}
+
+    config = load_config()
+
+    # API Key for authentication
+    API_KEY: Optional[str] = config.get("api_key")
 
 
 # Load global configuration
@@ -88,6 +111,17 @@ app = FastAPI(
     description="Aggregates LLM responses with tool_calls support, multi-master agent racing and uses a single-step MOA for synthesis.",
     lifespan=lifespan
 )
+
+
+# --- Authentication Functions ---
+async def verify_api_key(authorization: Optional[str] = Header(None)) -> None:
+    """Verify API key from authorization header."""
+    if Settings.API_KEY and (
+        not authorization or
+        not authorization.startswith("Bearer ") or
+        authorization[7:] != Settings.API_KEY
+    ):
+        raise HTTPException(status_code=401, detail="Invalid API key")
 
 
 # --- Core Logic: API Calling and Retries ---
@@ -390,8 +424,8 @@ async def async_unified_moa(
     if not full_llm_output:
         logger.error(f"Master agent returned empty content: {llm_response_json}")
         # await asyncio.sleep(30)  # let others continue first
-        return 'error'
-        # raise HTTPException(status_code=502, detail="MOA master agent returned empty content and no tool_calls.")
+        # return 'error'
+        raise HTTPException(status_code=502, detail="MOA master agent returned empty content and no tool_calls.")
 
     match = re.search(r"<final_answer>(.*?)</final_answer>", full_llm_output, re.DOTALL)
     if match:
@@ -419,7 +453,8 @@ async def race_master_agents(
 
     race_id = f"race-{uuid.uuid4()}"
     logger.info(
-        f"[{race_id}] Starting master agent racing with {len(MOA_MASTER_AGENT_KEYS)} agents, {MOA_RACING_RUNS} runs each")
+        f"[{race_id}] Starting master agent racing with {len(MOA_MASTER_AGENT_KEYS)} agents, {MOA_RACING_RUNS} runs each"
+    )
 
     racing_tasks = []
     task_metadata = []
@@ -433,56 +468,87 @@ async def race_master_agents(
                 async_unified_moa(initial_query, candidates, client, master_config, original_tools)
             )
             racing_tasks.append(task)
-            task_metadata.append(
-                {"master_key": master_key, "master_model": master_config.get("model", "unknown"), "run_index": run_idx,
-                 "task": task})
+            task_metadata.append({
+                "master_key": master_key,
+                "master_model": master_config.get("model", "unknown"),
+                "run_index": run_idx,
+                "task": task
+            })
 
     if not racing_tasks:
         raise HTTPException(status_code=500, detail="No valid master agents found for racing")
 
     logger.info(f"[{race_id}] Racing {len(racing_tasks)} total tasks")
     start_time = time.time()
+
+    winner_result = None
+    winner_metadata = None
+    pending_tasks = set(racing_tasks)
+
     try:
-        done, pending = await asyncio.wait(racing_tasks, return_when=asyncio.FIRST_COMPLETED)
-        winner_result, winner_metadata = None, None
-        for completed_task in done:
-            try:
-                result = await completed_task
+        # Keep waiting until we find a valid result or all tasks fail
+        while pending_tasks and winner_result is None:
+            done, pending_tasks = await asyncio.wait(
+                pending_tasks,
+                return_when=asyncio.FIRST_COMPLETED
+            )
 
-                # Check if result has error
-                if "error" in result:
-                    logger.info(f"[{race_id}] Continuing to wait for other tasks...")
-                    continue  # Skip this result and wait for next
+            for completed_task in done:
+                try:
+                    result = await completed_task
 
-                # Found valid winner
-                for meta in task_metadata:
-                    if meta["task"] == completed_task:
-                        winner_metadata = meta
-                        logger.info(f"[{race_id}] Found winner: {meta['master_key']} (run {meta['run_index']}) {winner_metadata=}")
-                        break
-                winner_result = result
-                logger.info(f"[{race_id}] Winner result obtained:{winner_result=}")
-                break
+                    # Skip if error
+                    if "error" in result:
+                        for meta in task_metadata:
+                            if meta["task"] == completed_task:
+                                logger.warning(
+                                    f"[{race_id}] Master agent {meta['master_key']} (run {meta['run_index']}) failed: {result.get('details', result['error'])}"
+                                )
+                        continue  # Try next completed task in done set
 
-            except Exception as e:
-                logger.exception(f"[{race_id}] Racing task failed: {e}")
-                continue
+                    # Found winner!
+                    for meta in task_metadata:
+                        if meta["task"] == completed_task:
+                            winner_metadata = meta
+                            break
+                    winner_result = result
+                    break  # Exit for loop
 
-        if pending:
-            logger.info(f"[{race_id}] Cancelling {len(pending)} remaining racing tasks")
-            for task in pending:
+                except Exception as e:
+                    logger.warning(f"[{race_id}] Racing task failed with exception: {e}")
+                    continue
+
+        # Cancel remaining tasks
+        if pending_tasks:
+            logger.info(f"[{race_id}] Cancelling {len(pending_tasks)} remaining racing tasks")
+            for task in pending_tasks:
                 task.cancel()
-            await asyncio.gather(*pending, return_exceptions=True)
+            await asyncio.gather(*pending_tasks, return_exceptions=True)
+
         if winner_result is None:
             raise HTTPException(status_code=502, detail="All master agents failed in racing mode")
+
         elapsed_time = time.time() - start_time
         logger.info(
-            f"[{race_id}] Winner: {winner_metadata['master_key']} ({winner_metadata['master_model']}) run {winner_metadata['run_index']} in {elapsed_time:.2f}s")
-        if "metadata" not in winner_result: winner_result["metadata"] = {}
+            f"[{race_id}] Winner: {winner_metadata['master_key']} ({winner_metadata['master_model']}) run {winner_metadata['run_index']} in {elapsed_time:.2f}s"
+        )
+
+        if "metadata" not in winner_result:
+            winner_result["metadata"] = {}
+
+        winner_result["metadata"]["racing_winner"] = winner_metadata["master_key"]
+        winner_result["metadata"]["racing_winner_model"] = winner_metadata["master_model"]
+        winner_result["metadata"]["racing_run_index"] = winner_metadata["run_index"]
+        winner_result["metadata"]["racing_elapsed_seconds"] = round(elapsed_time, 2)
+        winner_result["metadata"]["racing_total_tasks"] = len(racing_tasks)
+
         return winner_result
+
     except Exception as e:
+        # Emergency cleanup: cancel all tasks if something goes wrong
         for task in racing_tasks:
-            if not task.done(): task.cancel()
+            if not task.done():
+                task.cancel()
         await asyncio.gather(*racing_tasks, return_exceptions=True)
         logger.error(f"[{race_id}] Racing failed with error: {e}")
         raise HTTPException(status_code=502, detail=f"Master agent racing failed: {e}")
@@ -713,49 +779,27 @@ async def random_single_api(request: Request) -> JSONResponse:
     return await call_random_api(request, num_apis=1, race_mode=False)
 
 
-@app.post("/fastest_v1/chat/completions")
-async def fastest_api_racing(request: Request) -> JSONResponse:
-    """
-    Races multiple random downstream APIs and returns the fastest response.
-    Number of APIs to race can be controlled via query parameter 'n' (default: 3).
-
-    Example: POST /v1/fastest?n=5
-    """
-    num_racers = 5
-
-    # Validate num_racers
-    if num_racers < 2:
-        raise HTTPException(
-            status_code=400,
-            detail="Parameter 'n' must be at least 2 for racing mode"
-        )
-
-    max_racers = len(TARGET_APIS)
-    if num_racers > max_racers:
-        logger.warning(f"Requested {num_racers} racers, limiting to {max_racers} (all available APIs)")
-        num_racers = max_racers
-
-    return await call_random_api(request, num_apis=num_racers, race_mode=True)
-
-
 @app.post("/v1/chat/completions")
-async def moa_endpoint(request: Request) -> JSONResponse:
+async def moa_endpoint(request: Request, authorization: Optional[str] = Header(None)) -> JSONResponse:
+    await verify_api_key(authorization)
     # body = await request.json()
     # logger.debug(f"Received /v1/chat/completions request body: {json.dumps(body, indent=2)}")
     return await process_moa_request(request, num_candidates=NUM_CANDIDATES)
 
 
 @app.get("/v1/models")
-async def list_models() -> JSONResponse:
+async def list_models(authorization: Optional[str] = Header(None)) -> JSONResponse:
     """Lists available models (downstream APIs)."""
+    await verify_api_key(authorization)
     models = [{"id": api_id, "object": "model", "owned_by": "aggregator", "model_info": config} for api_id, config in
               TARGET_APIS.items()]
     return JSONResponse(content={"object": "list", "data": models})
 
 
 @app.get("/health")
-async def health_check():
+async def health_check(authorization: Optional[str] = Header(None)):
     """Provides a health check and system configuration overview."""
+    await verify_api_key(authorization)
     return {
         "status": "healthy",
         "timestamp": int(time.time()),

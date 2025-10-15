@@ -1,8 +1,11 @@
 # =============================================================================
 # MOA (Mixture-of-Agents) Aggregator Configuration
 # =============================================================================
-# Copy this file to moa_config.yaml and customize for your deployment
+# Copy this file to config.yaml and customize for your deployment
 # This service combines responses from multiple LLM providers for better quality
+
+# Bearer token for API authentication (same as other providers)
+api_key: "123"
 
 
 # =============================================================================
@@ -275,4 +278,3 @@ prompts:
 #    {content}
 #
 #    ---
-
